@@ -56,7 +56,7 @@ type nvmlPciDetailsGetter struct {
 }
 
 func (dg *nvmlPciDetailsGetter) GetPciBusID(deviceID string) (string, error) {
-	dg.initOnce.Do(func() {dg.init()})
+	dg.initOnce.Do(func() { dg.init() })
 
 	if dg.deviceIDToBusID == nil {
 		return "", fmt.Errorf("Init of nvmlPciDetailsGetter has failed")
