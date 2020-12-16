@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/NVIDIA/gpu-monitoring-tools/bindings/go/nvml"
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -168,4 +169,3 @@ func (m *MetricServer) resetMetricsIfNeeded() {
 // Stop performs cleanup operations and stops the metric server.
 func (m *MetricServer) Stop() {
 }
-
