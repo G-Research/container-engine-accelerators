@@ -95,6 +95,7 @@ func main() {
 			glog.Infof("Failed to start metric server: %v", err)
 			return
 		}
+		defer metricServer.Stop()
 	}
 
 	ngm.Serve(*pluginMountPath, kubeletEndpoint, fmt.Sprintf("%s-%d.sock", pluginEndpointPrefix, time.Now().Unix()))
