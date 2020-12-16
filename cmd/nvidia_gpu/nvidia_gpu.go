@@ -23,7 +23,6 @@ import (
 	"github.com/GoogleCloudPlatform/container-engine-accelerators/pkg/gpu/nvidia/metrics"
 	"github.com/GoogleCloudPlatform/container-engine-accelerators/pkg/gpu/nvidia/numa"
 	"github.com/GoogleCloudPlatform/container-engine-accelerators/pkg/gpu/nvidia/pci"
-
 	"github.com/NVIDIA/gpu-monitoring-tools/bindings/go/nvml"
 	"github.com/golang/glog"
 )
@@ -54,22 +53,6 @@ func main() {
 		{HostPath: *hostPathPrefix, ContainerPath: *containerPathPrefix},
 		{HostPath: *hostVulkanICDPathPrefix, ContainerPath: *containerVulkanICDPathPrefix}}
 
-	if *topologyEnabled || *enableContainerGPUMetrics {
-		err := nvml.Init()
-		if err != nil {
-			glog.Errorf("Failed to initialize NVML: %v", err)
-			return
-		}
-		defer nvml.Shutdown()
-
-		driverVersion, err := nvml.GetDriverVersion()
-		if err != nil {
-			glog.Errorf("Failed to get NVML driver version: %v", err)
-			return
-		}
-		glog.Infof("NVML initialized successfully. Driver version: %s", driverVersion)
-	}
-
 	numaNodeGetter := numa.NewNullNumaNodeGetter()
 	if *topologyEnabled {
 		pciDetailsGetter, err := pci.NewNvmlPciDetailsGetter()
@@ -81,16 +64,27 @@ func main() {
 	}
 
 	ngm := gpumanager.NewNvidiaGPUManager(devDirectory, mountPaths, numaNodeGetter)
-	// Keep on trying until success. This is required
+	// Retry until nvidiactl and nvidia-uvm are detected. This is required
 	// because Nvidia drivers may not be installed initially.
 	for {
-		err := ngm.Start()
+		err := ngm.CheckDevicePaths()
 		if err == nil {
 			break
 		}
 		// Use non-default level to avoid log spam.
-		glog.V(3).Infof("nvidiaGPUManager.Start() failed: %v", err)
+		glog.V(3).Infof("nvidiaGPUManager.CheckDevicePaths() failed: %v", err)
 		time.Sleep(5 * time.Second)
+	}
+
+	if err := nvml.Init(); err != nil {
+		glog.Errorf("failed to initialize nvml: %v", err)
+		return
+	}
+	defer nvml.Shutdown()
+
+	if err := ngm.Start(); err != nil {
+		glog.Errorf("nvidiaGPUManager.Start() failed: %v", err)
+		return
 	}
 
 	if *enableContainerGPUMetrics {

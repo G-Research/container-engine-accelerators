@@ -15,6 +15,7 @@
 package nvidia
 
 import (
+	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
@@ -48,15 +49,17 @@ var (
 
 // nvidiaGPUManager manages nvidia gpu devices.
 type nvidiaGPUManager struct {
-	devDirectory   string
-	mountPaths     []MountPath
-	numaNodeGetter numa.NumaNodeGetter
-	defaultDevices []string
-	devices        map[string]pluginapi.Device
-	grpcServer     *grpc.Server
-	socket         string
-	stop           chan bool
-	devicesMutex   sync.Mutex
+	devDirectory        string
+	mountPaths          []MountPath
+	defaultDevices      []string
+	devices             map[string]pluginapi.Device
+	grpcServer          *grpc.Server
+	socket              string
+	stop                chan bool
+	devicesMutex        sync.Mutex
+	nvidiaCtlDevicePath string
+	nvidiaUVMDevicePath string
+	numaNodeGetter      numa.NumaNodeGetter
 }
 
 type MountPath struct {
@@ -66,11 +69,13 @@ type MountPath struct {
 
 func NewNvidiaGPUManager(devDirectory string, mountPaths []MountPath, numaNodeGetter numa.NumaNodeGetter) *nvidiaGPUManager {
 	return &nvidiaGPUManager{
-		devDirectory:   devDirectory,
-		mountPaths:     mountPaths,
-		devices:        make(map[string]pluginapi.Device),
-		stop:           make(chan bool),
-		numaNodeGetter: numaNodeGetter,
+		devDirectory:        devDirectory,
+		mountPaths:          mountPaths,
+		devices:             make(map[string]pluginapi.Device),
+		stop:                make(chan bool),
+		nvidiaCtlDevicePath: path.Join(devDirectory, nvidiaCtlDevice),
+		nvidiaUVMDevicePath: path.Join(devDirectory, nvidiaUVMDevice),
+		numaNodeGetter:      numaNodeGetter,
 	}
 }
 
@@ -147,19 +152,22 @@ func (ngm *nvidiaGPUManager) GetDeviceState(DeviceName string) string {
 	return pluginapi.Healthy
 }
 
+// Checks if the two nvidia paths exist. Could be used to verify if the driver
+// has been installed correctly
+func (ngm *nvidiaGPUManager) CheckDevicePaths() error {
+	if _, err := os.Stat(ngm.nvidiaCtlDevicePath); err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(ngm.nvidiaUVMDevicePath); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Discovers Nvidia GPU devices and sets up device access environment.
 func (ngm *nvidiaGPUManager) Start() error {
-	nvidiaCtlDevicePath := path.Join(ngm.devDirectory, nvidiaCtlDevice)
-	nvidiaUVMDevicePath := path.Join(ngm.devDirectory, nvidiaUVMDevice)
-	if _, err := os.Stat(nvidiaCtlDevicePath); err != nil {
-		return err
-	}
-
-	if _, err := os.Stat(nvidiaUVMDevicePath); err != nil {
-		return err
-	}
-
-	ngm.defaultDevices = []string{nvidiaCtlDevicePath, nvidiaUVMDevicePath}
+	ngm.defaultDevices = []string{ngm.nvidiaCtlDevicePath, ngm.nvidiaUVMDevicePath}
 
 	nvidiaUVMToolsDevicePath := path.Join(ngm.devDirectory, nvidiaUVMToolsDevice)
 	if _, err := os.Stat(nvidiaUVMToolsDevicePath); err == nil {
